@@ -12,6 +12,12 @@ use subtle::ConstantTimeEq;
 #[cfg(feature = "serde")]
 use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
 
+pub type MerkleTreeOpResult<T> = Result<T, SelfCheckError>;
+pub enum MerkleTreeOpError {
+    InvalidIndex,
+    MaximumHeightReached,
+}
+
 /// The domain separator used for calculating parent hashes
 const PARENT_HASH_PREFIX: &[u8] = &[0x01];
 
@@ -100,8 +106,27 @@ where
     H: Digest,
     T: CanonicalSerialize,
 {
+    const MAX_HEIGHT: usize = usize::MAX - 1;
+
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn update(&mut self, new_val: T, idx: usize) -> MerkleTreeOpResult<()> {
+        if self.internal_nodes.len() > CtMerkleTree::<H, T>::MAX_HEIGHT {
+            return Err(SelfCheckError::MaxHeightReached(
+                CtMerkleTree::<H, T>::MAX_HEIGHT,
+            ));
+        }
+
+        if self.leaves.len() <= idx {
+            return Err(SelfCheckError::MissingNode(idx));
+        }
+
+        self.leaves[idx] = new_val;
+        self.recaluclate_path(LeafIdx::new(idx));
+
+        Ok(())
     }
 
     /// Appends the given item to the end of the list. Panics if `self.len() > usize::MAX / 2`.
@@ -109,7 +134,7 @@ where
         // Make sure we can push two elements to internal_nodes (two because every append involves
         // adding a parent node somewhere). usize::MAX is the max capacity of a vector, minus 1. So
         // usize::MAX-1 is the correct bound to use here.
-        if self.internal_nodes.len() > usize::MAX - 1 {
+        if self.internal_nodes.len() > CtMerkleTree::<H, T>::MAX_HEIGHT {
             panic!("cannot push; tree is full");
         }
 
@@ -196,6 +221,8 @@ where
     /// Recalculates the hashes on the path from `leaf_idx` to the root. The path MUST already
     /// exist, i.e., this tree cannot be missing internal nodes.
     fn recaluclate_path(&mut self, leaf_idx: LeafIdx) {
+        // TODO: this should return an error instead of throwing if the path does
+
         // First update the leaf hash
         let leaf = &self.leaves[leaf_idx.as_usize()];
         let mut cur_idx: InternalIdx = leaf_idx.into();
@@ -253,6 +280,10 @@ where
         self.leaves.get(idx)
     }
 
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
+        self.leaves.get_mut(idx)
+    }
+
     /// Returns all the items
     pub fn items(&self) -> &[T] {
         &self.leaves
@@ -282,6 +313,7 @@ pub(crate) fn parent_hash<H: Digest>(
 
 #[cfg(test)]
 pub(crate) mod test {
+
     use super::*;
     use crate::test_util::{Hash, Leaf};
 
@@ -336,5 +368,14 @@ pub(crate) mod test {
         let root = tree.root();
         let roundtrip_root = crate::test_util::serde_roundtrip(root.clone());
         assert_eq!(root, roundtrip_root);
+    }
+
+    #[test]
+    fn modify_entry() {
+        let rng = rand::thread_rng();
+        let mut t = rand_tree(rng, 10);
+        assert!(t.update([1; 32], 0).is_ok());
+        assert!(t.update([1; 32], 9).is_ok());
+        assert!(t.update([1; 32], 10).is_err());
     }
 }

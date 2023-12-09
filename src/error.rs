@@ -58,6 +58,8 @@ pub enum SelfCheckError {
 
     /// The node at the given index has the wrong hash
     IncorrectHash(usize),
+
+    MaxHeightReached(usize),
 }
 
 impl fmt::Display for SelfCheckError {
@@ -66,6 +68,9 @@ impl fmt::Display for SelfCheckError {
             SelfCheckError::MissingNode(idx) => write!(f, "the node at index {} is missing", idx),
             SelfCheckError::IncorrectHash(idx) => {
                 write!(f, "the node at index {} has the wrong hash", idx)
+            }
+            SelfCheckError::MaxHeightReached(height) => {
+                write!(f, "maximum height {} reached", height)
             }
         }
     }

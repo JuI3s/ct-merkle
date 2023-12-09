@@ -160,7 +160,7 @@ impl<H: Digest> RootHash<H> {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::merkle_tree::test::rand_tree;
+    use crate::{merkle_tree::test::rand_tree, test::rand_val};
 
     // Tests that an honestly generated inclusion proof verifies
     #[test]
@@ -182,5 +182,42 @@ pub(crate) mod test {
             let roundtrip_proof = crate::test_util::serde_roundtrip(proof.clone());
             assert_eq!(proof.as_bytes(), roundtrip_proof.as_bytes());
         }
+    }
+
+    #[test]
+    fn inclusion_proof_correctness_after_modification() {
+        let mut rng = rand::thread_rng();
+
+        let mut t = rand_tree(&mut rng, 10);
+        
+        for idx in 0..t.len() {
+
+            let mut new_val = rand_val(&mut rng);   
+            let prev_elem =  t.get(idx).unwrap().clone();
+            let p1 = t.prove_inclusion(idx);
+            
+            {
+                let p1 = t.prove_inclusion(idx);
+                let elem = t.get(idx).unwrap();
+    
+                // Now check the proof
+                let root = t.root();
+                root.verify_inclusion(elem, idx, &p1).unwrap();
+    
+                // Generate new random value. 
+                while new_val == *elem {
+                    new_val = rand_val(&mut rng);
+                }    
+            }
+
+            // Modify the entry
+            assert!(t.update(new_val, idx).is_ok());
+            assert_ne!(new_val, prev_elem);
+
+            assert!(t.root().verify_inclusion(&prev_elem, idx, &p1).is_err());
+            let p2 = t.prove_inclusion(idx);
+            assert!(t.root().verify_inclusion(t.get(idx).unwrap(), idx, &p2).is_ok());
+        }
+
     }
 }
