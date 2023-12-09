@@ -192,24 +192,15 @@ pub(crate) mod test {
         
         for idx in 0..t.len() {
 
-            let mut new_val = rand_val(&mut rng);   
             let prev_elem =  t.get(idx).unwrap().clone();
-            let p1 = t.prove_inclusion(idx);
-            
-            {
-                let p1 = t.prove_inclusion(idx);
-                let elem = t.get(idx).unwrap();
-    
-                // Now check the proof
-                let root = t.root();
-                root.verify_inclusion(elem, idx, &p1).unwrap();
-    
-                // Generate new random value. 
-                while new_val == *elem {
-                    new_val = rand_val(&mut rng);
-                }    
-            }
+            let mut new_val = rand_val(&mut rng);   
+            while new_val == prev_elem {
+                new_val = rand_val(&mut rng);
+            }    
 
+            let p1 = t.prove_inclusion(idx);
+            assert!(t.root().verify_inclusion(&prev_elem, idx, &p1).is_ok());
+            
             // Modify the entry
             assert!(t.update(new_val, idx).is_ok());
             assert_ne!(new_val, prev_elem);
